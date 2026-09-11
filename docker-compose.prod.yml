@@ -1,0 +1,65 @@
+# Production compose file for self-hosting on a single VPS (e.g. DigitalOcean, Hetzner, a home
+# server). Builds real production images (see Dockerfile.prod in each service — compiled
+# TypeScript / static nginx-served assets, no dev servers) and fronts them with Caddy, which
+# handles automatic HTTPS (a real Let's Encrypt certificate, auto-renewed) for free — just point
+# DNS A records at this host's IP and set DOMAIN below.
+#
+# This is ONE practical option, not the only one. A managed PaaS (Render, Railway, Fly.io) is
+# usually less operational work for a small team — see readme.md's production section for both
+# paths. This file assumes a managed MongoDB (Atlas) via MONGODB_URI; it does not run Mongo
+# itself, since a production database deserves real automated backups that a bare Docker volume
+# on one VPS does not give you.
+#
+# Usage:
+#   DOMAIN=yourdomain.com docker compose -f docker-compose.prod.yml up -d --build
+# Required env vars (set in your shell, a .env file next to this one, or your host's secret
+# manager): DOMAIN, MONGODB_URI, JWT_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY, CORS_ORIGIN.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    expose:
+      - "4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: https://${DOMAIN}/api
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:

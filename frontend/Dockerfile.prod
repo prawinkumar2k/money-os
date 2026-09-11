@@ -1,0 +1,21 @@
+# Production image: builds the Vite SPA as static assets, then serves them with nginx — no Vite
+# dev server, no devDependencies in the shipped image. Vite bakes VITE_API_URL into the JS bundle
+# at BUILD time (not runtime), so it must be passed as a build arg:
+#   docker build -f Dockerfile.prod --build-arg VITE_API_URL=https://your-api.example.com/api -t moneyos-frontend .
+# A static host (Netlify, Vercel, Cloudflare Pages, S3+CloudFront) is simpler and usually cheaper
+# than running this container — see readme.md's production deployment section. This Dockerfile is
+# for self-hosting (e.g. alongside the backend on the same VPS via Nginx/Caddy).
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

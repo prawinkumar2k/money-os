@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.*.example
+*.log
+.DS_Store
+coverage/
+android/
+ios/
+
+# Local AI-assistant/IDE tool state — not part of the product, machine/tool-specific.
+.jetro/
+.claude/
+.cursor/
+.agents/
+.vscode/
+.mcp.json
+.windsurfrules
+AGENT.md
+CLAUDE.md
+.github/copilot-instructions.md
