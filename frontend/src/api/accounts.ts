@@ -1,4 +1,7 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import { listAccountsLocal, createAccountLocal, deleteAccountLocal } from "../local/accounts";
+import { getDashboardLocal } from "../local/dashboard";
 
 export interface Account {
   _id: string;
@@ -15,6 +18,7 @@ export interface Account {
 }
 
 export async function listAccounts(): Promise<Account[]> {
+  if (isNative) return listAccountsLocal();
   const data = await apiFetch("/accounts");
   return data.accounts;
 }
@@ -27,15 +31,19 @@ export interface CreateAccountInput {
 }
 
 export async function createAccount(input: CreateAccountInput): Promise<Account> {
+  if (isNative) return createAccountLocal(input);
   const data = await apiFetch("/accounts", { method: "POST", body: JSON.stringify(input) });
   return data.account;
 }
 
 export async function deleteAccount(id: string): Promise<void> {
+  if (isNative) return deleteAccountLocal(id);
   await apiFetch(`/accounts/${id}`, { method: "DELETE" });
 }
 
 export async function startSync(provider = "mock"): Promise<{ job: { status: string } }> {
+  // Provider sync (mock/real bank data) always talks to the backend — this is the "optional
+  // sync" surface, not primary local CRUD, so it intentionally does not branch on isNative.
   return apiFetch("/sync", { method: "POST", body: JSON.stringify({ provider }) });
 }
 
@@ -70,5 +78,6 @@ export interface DashboardSummary {
 }
 
 export async function getDashboard(): Promise<DashboardSummary> {
+  if (isNative) return getDashboardLocal();
   return apiFetch("/dashboard");
 }

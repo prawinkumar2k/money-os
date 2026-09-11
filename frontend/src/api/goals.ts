@@ -1,4 +1,6 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import { listGoalsLocal, createGoalLocal, deleteGoalLocal, addContributionLocal } from "../local/goals";
 
 export interface GoalContribution {
   amount: number;
@@ -25,20 +27,24 @@ export interface CreateGoalInput {
 }
 
 export async function listGoals(): Promise<Goal[]> {
+  if (isNative) return listGoalsLocal();
   const data = await apiFetch("/goals");
   return data.goals;
 }
 
 export async function createGoal(input: CreateGoalInput): Promise<Goal> {
+  if (isNative) return createGoalLocal(input);
   const data = await apiFetch("/goals", { method: "POST", body: JSON.stringify(input) });
   return data.goal;
 }
 
 export async function deleteGoal(id: string): Promise<void> {
+  if (isNative) return deleteGoalLocal(id);
   await apiFetch(`/goals/${id}`, { method: "DELETE" });
 }
 
 export async function addContribution(id: string, amount: number, note?: string): Promise<Goal> {
+  if (isNative) return addContributionLocal(id, amount, note);
   const data = await apiFetch(`/goals/${id}/contributions`, {
     method: "POST",
     body: JSON.stringify({ amount, note: note ?? null }),

@@ -13,6 +13,7 @@ import { fetchWithCache } from "../offline/cache";
 import { OutboxEntry, enqueueMutation, listOutbox } from "../offline/outbox";
 import { capturePhoto, isCameraAvailable } from "../native/camera";
 import { fileToCompressedDataUrl } from "../utils/imageCompress";
+import { isNative } from "../local/db";
 
 const SINGLE_LEG_TYPES = ["expense", "income", "refund", "fee", "cashback", "adjustment"];
 const TRANSACTIONS_CACHE_KEY = "transactions:unfiltered:page1";
@@ -69,7 +70,12 @@ export function TransactionsPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
-  const online = useOnlineStatus();
+  const networkOnline = useOnlineStatus();
+  // On native, every write goes straight to the on-device SQLite database (see api/transactions.ts
+  // -> local/transactions.ts) — it never depends on network reachability, so WiFi/mobile-data
+  // status is irrelevant here. The REST-backed outbox-queue path below only applies to the web
+  // build, which still talks to a real backend and needs to queue writes made while offline.
+  const online = isNative || networkOnline;
 
   const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
   const [nativeCameraAvailable, setNativeCameraAvailable] = useState(false);

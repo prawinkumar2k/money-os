@@ -1,4 +1,6 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import { listBillsLocal, createBillLocal, deleteBillLocal, payBillLocal } from "../local/bills";
 
 export interface Bill {
   _id: string;
@@ -26,20 +28,24 @@ export interface CreateBillInput {
 }
 
 export async function listBills(): Promise<Bill[]> {
+  if (isNative) return listBillsLocal();
   const data = await apiFetch("/bills");
   return data.bills;
 }
 
 export async function createBill(input: CreateBillInput): Promise<Bill> {
+  if (isNative) return createBillLocal(input);
   const data = await apiFetch("/bills", { method: "POST", body: JSON.stringify(input) });
   return data.bill;
 }
 
 export async function deleteBill(id: string): Promise<void> {
+  if (isNative) return deleteBillLocal(id);
   await apiFetch(`/bills/${id}`, { method: "DELETE" });
 }
 
 export async function payBill(id: string): Promise<Bill> {
+  if (isNative) return payBillLocal(id);
   const data = await apiFetch(`/bills/${id}/pay`, { method: "POST" });
   return data.bill;
 }

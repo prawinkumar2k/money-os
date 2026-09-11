@@ -1,4 +1,13 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import {
+  listTransactionsLocal,
+  createTransactionLocal,
+  deleteTransactionLocal,
+  updateTransactionCategoryLocal,
+  setTransactionReceiptLocal,
+  deleteTransactionReceiptLocal,
+} from "../local/transactions";
 
 export interface Transaction {
   _id: string;
@@ -36,6 +45,7 @@ export interface TransactionListResult {
 }
 
 export async function listTransactions(filters: TransactionFilters = {}): Promise<TransactionListResult> {
+  if (isNative) return listTransactionsLocal(filters);
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== "") params.set(key, String(value));
@@ -65,23 +75,28 @@ export interface CreateTransferInput {
 }
 
 export async function createTransaction(input: CreateSingleLegInput | CreateTransferInput): Promise<unknown> {
+  if (isNative) return createTransactionLocal(input);
   return apiFetch("/transactions", { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
+  if (isNative) return deleteTransactionLocal(id);
   await apiFetch(`/transactions/${id}`, { method: "DELETE" });
 }
 
 export async function updateTransactionCategory(id: string, category: string, rememberRule = false): Promise<void> {
+  if (isNative) return updateTransactionCategoryLocal(id, category, rememberRule);
   await apiFetch(`/transactions/${id}`, { method: "PUT", body: JSON.stringify({ category, rememberRule }) });
 }
 
 export async function setTransactionReceipt(id: string, image: string): Promise<Transaction> {
+  if (isNative) return setTransactionReceiptLocal(id, image);
   const data = await apiFetch(`/transactions/${id}/receipt`, { method: "PUT", body: JSON.stringify({ image }) });
   return data.transaction;
 }
 
 export async function deleteTransactionReceipt(id: string): Promise<Transaction> {
+  if (isNative) return deleteTransactionReceiptLocal(id);
   const data = await apiFetch(`/transactions/${id}/receipt`, { method: "DELETE" });
   return data.transaction;
 }

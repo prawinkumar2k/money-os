@@ -1,4 +1,6 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import { getNetWorthLocal, getNetWorthHistoryLocal } from "../local/netWorth";
 
 export interface NetWorthSummary {
   totalAssets: number;
@@ -22,10 +24,12 @@ export interface NetWorthSnapshot {
 }
 
 export async function getNetWorth(): Promise<NetWorthSummary> {
+  if (isNative) return getNetWorthLocal();
   return apiFetch("/net-worth");
 }
 
 export async function getNetWorthHistory(days = 90): Promise<NetWorthSnapshot[]> {
+  if (isNative) return getNetWorthHistoryLocal(days);
   const data = await apiFetch(`/net-worth/history?days=${days}`);
   return data.snapshots;
 }

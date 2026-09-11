@@ -14,6 +14,20 @@ Master prompt / product & architecture spec for this project. This document is t
 
 Personal-use app, but built to production quality — no artificial premium gating, no fake features.
 
+## 0. Architecture — local-first on Android, backend optional
+
+**As of 2026-09-11, the Android app's primary data store moved on-device.** The mobile app must work with the PC/backend completely off — no network, no server, nothing. This is a real architectural requirement, not a fallback/cache: `@capacitor-community/sqlite` (SQLCipher-encrypted) is now the source of truth for the native app, and the Node/Express/MongoDB backend below is an **optional** sync/backup destination, never a dependency for normal use.
+
+**Local-first modules (native Android, fully offline, zero network calls):** accounts, transactions (create/edit-category/delete/receipts), transfers, auto-categorization, budgets (with real period/rollover math), goals + contributions, bills (incl. "mark as paid" creating a real linked transaction), dashboard, net worth (with real day-over-day/month-over-month snapshots), analytics (category/merchant/cash-flow/savings-rate aggregation). Local authentication is a PBKDF2-hashed passcode (`frontend/src/local/localAuth.ts`) stored only in the encrypted local DB — the app can be set up and unlocked with zero network contact, layered with the existing biometric `AppLockGate` for re-lock after backgrounding.
+
+**How it works:** every `frontend/src/api/*.ts` file (the same functions pages already called) now branches on `Capacitor.isNativePlatform()`: native routes to `frontend/src/local/*.ts` (real SQL against the on-device DB), web keeps calling the REST API unchanged. Page components needed zero changes. See `frontend/src/local/db.ts` for the schema/migration/encryption setup.
+
+**Still backend-only** (native pages for these still call the REST API and show a real error, not a crash, if the backend is unreachable — honest degradation, not a silent failure): credit cards, loans, investments (the dedicated holdings/amortization trackers — basic balance for accounts *typed* as investment/loan is covered locally), subscriptions, reports, CSV/PDF import, connected-account provider sync ("Sync Now" — inherently backend-dependent, it pulls from an external/mock provider), notifications-from-server, backup/restore via the REST endpoint (the local data itself doesn't need this to persist — it's disk-backed SQLite regardless — but exporting/restoring a portable snapshot still goes through the backend today).
+
+**Optional PC sync/backup:** not yet built (see "Optional PC synchronization" work item). The backend/MongoDB remains available for this — self-hosted per the "Self-hosted — the actual chosen path" section below — but the app must and does function fully without it.
+
+**Verified for real** on an Android emulator with the backend confirmed down (no containers running) and WiFi disabled (0 active network interfaces via `dumpsys connectivity`): first-run passcode setup → dashboard load → create an account → create a transaction (real auto-categorization: "Swiggy" correctly matched to "Food") → account balance updated correctly → budgets/goals/analytics pages all rendered with real local computation → force-stopped the app (full process kill) → relaunched → correctly showed "Unlock" (not "Set up," proving the encrypted DB persisted) → entered the passcode → all data intact (net worth, balance, transaction) → deleted the transaction → balance correctly reversed. Not literally tested: the physical PC being powered off (this session runs on that same PC, so it can't be power-cycled from here) — what *was* verified is that the backend process was confirmed unreachable throughout, which is what the app actually depends on (or rather, doesn't).
+
 ## 1. Main Objective
 
 Manage bank accounts, UPI/payment accounts, Google Pay–related info where officially accessible, cash, credit cards, investments, loans, income, expenses, transfers, budgets, savings goals, bills, subscriptions, net worth, and financial analytics.
