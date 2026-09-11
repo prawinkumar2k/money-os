@@ -1,6 +1,7 @@
-{$DOMAIN} {
-	# Real automatic HTTPS: Caddy provisions and renews a Let's Encrypt certificate for this
-	# domain on its own, as long as DNS already points here and ports 80/443 are reachable.
+{$TS_HOSTNAME} {
+	# Real HTTPS via a cert generated once by `tailscale cert` (see readme.md), not automatic
+	# Let's Encrypt — a private Tailscale hostname has no public DNS for Let's Encrypt to verify.
+	tls /certs/tailscale.crt /certs/tailscale.key
 
 	handle /api/* {
 		reverse_proxy backend:4000

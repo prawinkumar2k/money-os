@@ -7,8 +7,8 @@ const url = process.env.VITE_API_URL;
 
 function fail(message) {
   console.error(`\n✖ Release build blocked: ${message}\n`);
-  console.error("Set a real production API URL, e.g.:");
-  console.error('  VITE_API_URL=https://api.yourdomain.com/api npm run cap:sync:release\n');
+  console.error("Set a real production API URL, e.g. your machine's Tailscale HTTPS hostname:");
+  console.error('  VITE_API_URL=https://your-machine.your-tailnet.ts.net/api npm run cap:sync:release\n');
   process.exit(1);
 }
 

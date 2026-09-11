@@ -10,6 +10,7 @@ coverage/
 *.tsbuildinfo
 android/
 ios/
+certs/
 
 # Local AI-assistant/IDE tool state — not part of the product, machine/tool-specific.
 .jetro/

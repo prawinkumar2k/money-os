@@ -299,40 +299,50 @@ Built `backend/Dockerfile.prod` and ran it standalone with `NODE_ENV=production`
 
 Backend: 69/69 tests pass (65 + 4 new CORS tests). Frontend: 41/41. Both `npm run build`s clean. Cleaned up all smoke-test containers/images afterward.
 
-### Recommended hosting (a recommendation, not a deployment — no accounts exist)
+### Self-hosted — the actual chosen path (no cloud, no Atlas)
 
-**Backend + database — a managed PaaS is the practical choice for a project this size:**
-- **Render**, **Railway**, or **Fly.io** — point at this repo (once it's a real git repo — see blockers below), set `Dockerfile.prod` as the build target (or let their Node buildpack run `npm run build && npm start`), and set the environment variables from `backend/.env.production.example` in the platform's secret/env dashboard. All three provision HTTPS automatically for their subdomain, and a custom domain is a DNS record away.
-- **MongoDB Atlas** (free/shared tier is enough to start) for the database — managed backups and failover that a bare Docker volume on one VPS doesn't give you.
-- Self-hosting alternative: `docker-compose.prod.yml` + `Caddyfile` in this repo build the real production images and front them with Caddy for automatic Let's Encrypt HTTPS on a plain VPS (DigitalOcean, Hetzner, etc.) — a legitimate option if you'd rather not depend on a PaaS, at the cost of you managing the server yourself.
+This is deliberately a self-hosted, "local-first operation" product (see "Personal Use Mode" above), not a SaaS deployed to a cloud provider. Everything — backend, frontend, MongoDB — runs on your own machine/server, on your own private network, under your own control. No managed database, no PaaS, no public domain.
 
-**Frontend (web):** a static host — **Vercel**, **Netlify**, or **Cloudflare Pages** — is simpler and cheaper than running `frontend/Dockerfile.prod`'s nginx container for a plain Vite SPA; set `VITE_API_URL` as a build-time environment variable pointing at the deployed backend's real HTTPS domain. The nginx Docker path stays available for self-hosting frontend alongside backend on the same VPS.
+**The HTTPS problem, and why Tailscale is the answer:** the Android/iOS WebView (and any modern browser) refuses to let the app call a plain `http://` API once the app itself is loaded over `https://` — this is exactly the mixed-content bug found and fixed earlier for the emulator. A self-hosted, LAN-only backend still needs a *real* HTTPS certificate, and normal certificate authorities (Let's Encrypt included) only issue one to a publicly resolvable domain, which a private setup doesn't have. **Tailscale solves this specifically**: it can issue a real, browser-trusted certificate for your own machine's private Tailscale hostname (`tailscale cert`) — reachable only over your private tailnet, never the public internet, with no port-forwarding and no domain purchase.
 
-### Exact steps once you have a domain + hosting account
+`docker-compose.prod.yml` and `Caddyfile` in this repo are built around exactly this: MongoDB runs as a plain Docker container (`mongo` service, persistent named volume, no host port published — only the backend container can reach it), the backend and frontend run as real production images (`Dockerfile.prod` in each), and Caddy terminates HTTPS using a cert file you generate once via Tailscale rather than automatic Let's Encrypt.
 
-1. Provision the backend host and MongoDB Atlas cluster; copy `backend/.env.production.example` to real values in the host's env/secret dashboard (never commit them) — real random `JWT_SECRET`/`JWT_REFRESH_SECRET`/`ENCRYPTION_KEY` (e.g. `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`), the real Atlas connection string, and `CORS_ORIGIN` including your real frontend domain plus `https://localhost,capacitor://localhost`.
-2. Deploy the backend (PaaS build from `Dockerfile.prod`, or `docker compose -f docker-compose.prod.yml up -d --build` on a VPS with `DOMAIN`/`MONGODB_URI`/secrets set).
-3. Deploy the frontend to your static host with `VITE_API_URL=https://<your-backend-domain>/api` set as a build-time env var.
-4. Rebuild the signed Android release pointed at the real API:
+**One-time setup:**
+1. **Enable HTTPS Certificates for your tailnet** — a one-time toggle only the Tailscale account owner can flip, at https://login.tailscale.com/admin/dns → "HTTPS Certificates" → enable. (Checked this session: `tailscale cert` is installed and working on this machine, but returns `"your Tailscale account does not support getting TLS certs"` until this is turned on — that's the exact, only blocker to real HTTPS right now.)
+2. Fetch the cert: `bash scripts/get-tailscale-cert.sh` — writes `certs/tailscale.crt` / `certs/tailscale.key` (gitignored) and prints the exact `TS_HOSTNAME` value to use next. Re-run this every ~90 days (a monthly cron/Scheduled Task) since these certs expire like Let's Encrypt ones and this script does not auto-renew.
+3. Generate real secrets and put them somewhere you'll actually keep (a password manager) — never commit them:
+   ```
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"   # run 3x: JWT_SECRET, JWT_REFRESH_SECRET
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"   # ENCRYPTION_KEY
+   ```
+4. Start everything:
+   ```
+   TS_HOSTNAME=<from step 2> \
+   JWT_SECRET=<from step 3> JWT_REFRESH_SECRET=<from step 3> ENCRYPTION_KEY=<from step 3> \
+   CORS_ORIGIN=https://<TS_HOSTNAME>,https://localhost,capacitor://localhost \
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+5. Rebuild the signed Android release pointed at the real Tailscale HTTPS endpoint (reuses the existing signing key — `frontend/android/moneyos-release-key.jks`, already generated and verified; do not regenerate it):
    ```
    cd frontend
-   VITE_API_URL=https://<your-backend-domain>/api npm run cap:sync:release
-   cd android
-   ./gradlew.bat bundleRelease assembleRelease
+   VITE_API_URL=https://<TS_HOSTNAME>/api npm run cap:sync:release
+   cd android && ./gradlew.bat bundleRelease assembleRelease
    ```
-   This reuses the existing signing key (`frontend/android/moneyos-release-key.jks` — already generated, signed, and verified; do not regenerate it) and refuses to build if `VITE_API_URL` is missing, non-HTTPS, or looks like a dev address.
-5. Verify the rebuilt AAB has no localhost baked in: `unzip -o app-release.apk -d /tmp/check && grep -r "localhost" /tmp/check/assets/public/assets/*.js` should find nothing.
-6. Upload `app-release.aab` to your Play Console listing.
+   Install the resulting APK on your phone (which must also be on the same tailnet — install the Tailscale app there too) to reach the self-hosted backend from anywhere, not just your home WiFi.
+6. Verify no dev URL leaked in: `unzip -o app-release.apk -d /tmp/check && grep -r "localhost" /tmp/check/assets/public/assets/*.js` should find nothing.
 
-### What you need to provide (exact blockers, nothing fakeable past this point)
+**Backups are your own responsibility now** — a self-hosted Mongo volume has no managed automatic backups the way Atlas would. Two layers, both already real, working features:
+- **App-level**: the existing `GET /api/backup` endpoint (Settings → "Download backup" in the UI) exports a full structured JSON snapshot on demand — run this periodically and store the file somewhere safe (a second drive, encrypted cloud storage, etc.).
+- **Database-level**: `docker exec <mongo-container> mongodump --archive=/data/db/backup-$(date +%F).gz --gzip --db money-os`, copied out and stored off this machine on some schedule — a real disaster-recovery layer the app-level JSON export alone doesn't fully replace (e.g. if you want point-in-time restores).
 
-- A **domain name** for the backend (and, if self-hosting the frontend too, one for that).
-- A **hosting account** for the backend (Render/Railway/Fly.io/a VPS provider) and, separately, real database credentials (a **MongoDB Atlas** account, or your own managed Mongo).
-- A **static hosting account** for the frontend (Vercel/Netlify/Cloudflare Pages) if not self-hosting it.
-- A **Google Play Console developer account** (one-time registration fee) plus store-listing assets (screenshots, description, privacy policy) — needed before `app-release.aab` can actually be published, separate from the signing that's already done.
-- This repository is **not currently a git repository** (no `.git` directory, no CI workflows beyond a stray `copilot-instructions.md`) — most PaaS deploy flows expect to build from a git push (typically GitHub). `git init` + pushing to a remote is a prerequisite for the PaaS path above, and is itself worth confirming with you before I do it, since it's the kind of action with a lasting effect (repo history starts from here) rather than a pure local build/config step.
+**Remote access away from home:** since everything is bound to your private tailnet, not the public internet, you (and your phone) can only reach it while connected to Tailscale — install the Tailscale app on any device you want to use Money OS from, and it works over the internet through Tailscale's encrypted tunnel, exactly as it would on your home WiFi. No port-forwarding, no public exposure.
 
-None of the above can be done from inside this environment — they require you to create accounts, choose a domain, and hand back the resulting credentials/URLs, at which point I can wire them in and do a final real-domain verification pass.
+### What you need to provide (exact blocker, nothing fakeable past this point)
+
+- **Enable "HTTPS Certificates" for your tailnet** in the Tailscale admin console (link above) — this is the one remaining step, an account-level setting only you can toggle. Everything else (the compose file, Caddy config, cert-fetch script, secret generation, the Android release rebuild path) is built, tested, and ready to run the moment that's on.
+- A **Google Play Console developer account** (one-time registration fee) plus store-listing assets (screenshots, description, privacy policy) — only relevant if you want to distribute the signed APK/AAB through the Play Store; installing it directly (sideloading) on your own phone needs neither.
+
+The managed-cloud path (Render/Railway/Fly.io + MongoDB Atlas) documented in an earlier pass of this README is intentionally not the chosen direction — this app is self-hosted by design, per "Personal Use Mode: local-first operation" in the original spec. That cloud path is not deleted from history, but is no longer the recommended one.
 
 ## Statement import — current status
 

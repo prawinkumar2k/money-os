@@ -1,30 +1,42 @@
-# Production compose file for self-hosting on a single VPS (e.g. DigitalOcean, Hetzner, a home
-# server). Builds real production images (see Dockerfile.prod in each service — compiled
-# TypeScript / static nginx-served assets, no dev servers) and fronts them with Caddy, which
-# handles automatic HTTPS (a real Let's Encrypt certificate, auto-renewed) for free — just point
-# DNS A records at this host's IP and set DOMAIN below.
+# Self-hosted production compose file: runs everything (backend, frontend, MongoDB) on your own
+# machine/server — no cloud hosting, no managed database (MongoDB Atlas or otherwise). Real
+# production images (see Dockerfile.prod in each service — compiled TypeScript / static
+# nginx-served assets, no dev servers), MongoDB as a plain Docker container with a persistent
+# named volume you own and back up yourself (see readme.md's backup guidance — there is no
+# managed automatic backup here, unlike a cloud database).
 #
-# This is ONE practical option, not the only one. A managed PaaS (Render, Railway, Fly.io) is
-# usually less operational work for a small team — see readme.md's production section for both
-# paths. This file assumes a managed MongoDB (Atlas) via MONGODB_URI; it does not run Mongo
-# itself, since a production database deserves real automated backups that a bare Docker volume
-# on one VPS does not give you.
+# HTTPS without a public domain: Caddy here does NOT do automatic Let's Encrypt (that needs a
+# publicly resolvable domain name, which a private/local-only setup doesn't have). Instead it
+# loads a cert you generate once via Tailscale — see readme.md's "Self-hosted with Tailscale"
+# section for the exact one-time command. This gives the Android/web app a real, browser-trusted
+# HTTPS endpoint reachable only over your private Tailscale network, not the public internet.
 #
 # Usage:
-#   DOMAIN=yourdomain.com docker compose -f docker-compose.prod.yml up -d --build
-# Required env vars (set in your shell, a .env file next to this one, or your host's secret
-# manager): DOMAIN, MONGODB_URI, JWT_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY, CORS_ORIGIN.
+#   TS_HOSTNAME=your-machine.your-tailnet.ts.net docker compose -f docker-compose.prod.yml up -d --build
+# Required env vars: TS_HOSTNAME, JWT_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY, CORS_ORIGIN.
+# MONGODB_URI is NOT required — the mongo service below is used automatically.
 
 services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_prod_data:/data/db
+    # No host port published on purpose: only the backend container (on the internal Docker
+    # network) can reach it. If you need direct DB access, use `docker exec` / `mongosh` inside
+    # the container rather than exposing the port to your LAN.
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
     restart: unless-stopped
+    depends_on:
+      - mongo
     environment:
       NODE_ENV: production
       PORT: 4000
-      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_URI: mongodb://mongo:27017/money-os
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
@@ -39,7 +51,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        VITE_API_URL: https://${DOMAIN}/api
+        VITE_API_URL: https://${TS_HOSTNAME}/api
     restart: unless-stopped
     expose:
       - "80"
@@ -51,9 +63,10 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: ${DOMAIN}
+      TS_HOSTNAME: ${TS_HOSTNAME}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -61,5 +74,6 @@ services:
       - frontend
 
 volumes:
+  mongo_prod_data:
   caddy_data:
   caddy_config:
