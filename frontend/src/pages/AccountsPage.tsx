@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Account, createAccount, deleteAccount, listAccounts, startSync } from "../api/accounts";
 import { fetchWithCache } from "../offline/cache";
+import { isNative } from "../local/db";
 
 const ACCOUNT_TYPES = [
   "savings",
@@ -98,15 +99,18 @@ export function AccountsPage() {
           <button className="btn btn-secondary" onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "Add account"}
           </button>
-          <button className="btn" onClick={handleSync} disabled={syncing}>
-            {syncing ? "Syncing..." : "Sync Now"}
-          </button>
+          {!isNative && (
+            <button className="btn" onClick={handleSync} disabled={syncing}>
+              {syncing ? "Syncing..." : "Sync Now"}
+            </button>
+          )}
         </div>
       </div>
 
       <p className="text-muted" style={{ fontSize: 13, marginTop: -12 }}>
-        No real bank or Account Aggregator provider is connected yet — "Sync Now" pulls from a
-        development-only mock provider so the app can be exercised end-to-end.
+        {isNative
+          ? "All accounts here are entered manually and stored only on this device — there is no bank/provider sync in the mobile app, since that would require a reachable server and a real Account Aggregator integration."
+          : 'No real bank or Account Aggregator provider is connected yet — "Sync Now" pulls from a development-only mock provider so the app can be exercised end-to-end.'}
       </p>
 
       {error && <p style={{ color: "var(--color-danger)" }}>{error}</p>}
@@ -157,7 +161,7 @@ export function AccountsPage() {
       {loading ? (
         <p className="text-muted">Loading...</p>
       ) : accounts.length === 0 ? (
-        <p className="text-muted">No accounts yet. Add one manually or click "Sync Now" to pull in mock accounts.</p>
+        <p className="text-muted">{isNative ? "No accounts yet. Add one manually to get started." : 'No accounts yet. Add one manually or click "Sync Now" to pull in mock accounts.'}</p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
           {accounts.map((account) => (
