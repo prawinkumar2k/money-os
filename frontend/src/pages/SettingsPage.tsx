@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { deleteAllData, downloadBackup, restoreBackup } from "../api/backup";
 import { ThemePreference, applyTheme, getStoredTheme } from "../theme";
 import { isBiometricAvailable } from "../native/biometrics";
+import { isNative } from "../local/db";
 import {
   TIMEOUT_OPTIONS_MINUTES,
   getAppLockTimeoutMinutes,
@@ -29,6 +30,9 @@ export function SettingsPage() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [appLockEnabled, setAppLockEnabledState] = useState(isAppLockEnabled());
   const [appLockTimeout, setAppLockTimeoutState] = useState(getAppLockTimeoutMinutes());
+  const [backupPassword, setBackupPassword] = useState("");
+  const [restorePassword, setRestorePassword] = useState("");
+  const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
 
   useEffect(() => {
     isBiometricAvailable().then(setBiometricAvailable);
@@ -50,11 +54,15 @@ export function SettingsPage() {
   }
 
   async function handleBackup() {
+    if (isNative && backupPassword.length < 8) {
+      setError("Enter a backup password (at least 8 characters) first");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await downloadBackup();
-      setMessage("Backup downloaded.");
+      await downloadBackup(isNative ? backupPassword : undefined);
+      setMessage(isNative ? "Encrypted backup shared. Remember this password — it's the only way to restore this file." : "Backup downloaded.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Backup failed");
     } finally {
@@ -65,6 +73,17 @@ export function SettingsPage() {
   async function handleRestoreFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (isNative) {
+      // Native backups are encrypted — hold the file until a password is entered, rather than
+      // restoring immediately as the (unencrypted, backend-exported) web path does below.
+      setPendingRestoreFile(file);
+      setError(null);
+      setMessage(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -79,6 +98,26 @@ export function SettingsPage() {
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleRestoreWithPassword() {
+    if (!pendingRestoreFile) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const text = await pendingRestoreFile.text();
+      const backup = JSON.parse(text);
+      const result = await restoreBackup(backup, restorePassword);
+      const total = Object.values(result.restoredCounts).reduce((a, b) => a + b, 0);
+      setMessage(`Restored ${total} records from backup.`);
+      setPendingRestoreFile(null);
+      setRestorePassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Restore failed — is this a valid Money OS backup file?");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -158,20 +197,62 @@ export function SettingsPage() {
 
       <div className="card">
         <h2 style={{ marginTop: 0, fontSize: 16 }}>Backup & restore</h2>
-        <p className="text-muted" style={{ fontSize: 13 }}>
-          Download an encrypted-in-transit (HTTPS) JSON snapshot of all your data, or restore from a
-          previous backup. Restoring never touches other users' data — everything is re-imported as
-          new records under your account.
-        </p>
+        {isNative ? (
+          <p className="text-muted" style={{ fontSize: 13 }}>
+            Your data lives only on this device. Download an AES-256 encrypted snapshot — protected
+            by a password only you know, not stored anywhere — and keep it somewhere safe (a second
+            device, cloud storage). It's the only way to recover your data if this device is lost,
+            reset, or the app is reinstalled.
+          </p>
+        ) : (
+          <p className="text-muted" style={{ fontSize: 13 }}>
+            Download an encrypted-in-transit (HTTPS) JSON snapshot of all your data, or restore from a
+            previous backup. Restoring never touches other users' data — everything is re-imported as
+            new records under your account.
+          </p>
+        )}
+
+        {isNative && (
+          <input
+            className="input"
+            type="password"
+            placeholder="Backup password (min. 8 characters)"
+            value={backupPassword}
+            onChange={(e) => setBackupPassword(e.target.value)}
+            style={{ marginBottom: 8, maxWidth: 320 }}
+          />
+        )}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn" onClick={handleBackup} disabled={busy}>
-            Download backup
+            {isNative ? "Download encrypted backup" : "Download backup"}
           </button>
           <label className="btn btn-secondary" style={{ cursor: "pointer" }}>
             Restore from file
             <input ref={fileInputRef} type="file" accept="application/json" onChange={handleRestoreFile} style={{ display: "none" }} />
           </label>
         </div>
+
+        {isNative && pendingRestoreFile && (
+          <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="text-muted" style={{ fontSize: 13 }}>
+              Restoring: {pendingRestoreFile.name} — this replaces all current data.
+            </span>
+            <input
+              className="input"
+              type="password"
+              placeholder="Backup password"
+              value={restorePassword}
+              onChange={(e) => setRestorePassword(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+            <button className="btn" onClick={handleRestoreWithPassword} disabled={busy || !restorePassword}>
+              Restore
+            </button>
+            <button className="btn btn-secondary" onClick={() => setPendingRestoreFile(null)} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ borderColor: "var(--color-danger)" }}>

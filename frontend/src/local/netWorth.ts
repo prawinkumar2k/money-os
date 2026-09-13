@@ -3,26 +3,26 @@ import type { NetWorthSnapshot, NetWorthSummary } from "../api/netWorth";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/**
- * Ported from backend/src/services/netWorth.service.ts. Note: this only sums account balances
- * (including accounts of type "investment"/"loan"), not the separate, more detailed
- * Investment/Loan holdings trackers (units/currentPrice, amortization schedules) — those modules
- * are not yet localized (see readme.md's offline-architecture section), so net worth here is real
- * but will under-count for a user who relies on those dedicated trackers rather than a plain
- * account balance for their investments/loans.
- */
+/** Ported from backend/src/services/netWorth.service.ts, now including the dedicated Investment
+ * (units * currentPrice) and Loan (remainingPrincipal) trackers, same as the backend does. */
 export async function computeNetWorthLocal(): Promise<{ totalAssets: number; totalLiabilities: number; netWorth: number; breakdown: NetWorthSummary["breakdown"] }> {
   const db = await getDb();
-  const res = await db.query("SELECT type, balance FROM accounts WHERE deletedAt IS NULL");
-  const accounts = res.values ?? [];
+  const [accountsRes, investmentsRes, loansRes] = await Promise.all([
+    db.query("SELECT type, balance FROM accounts WHERE deletedAt IS NULL"),
+    db.query("SELECT units, currentPrice FROM investments WHERE deletedAt IS NULL"),
+    db.query("SELECT remainingPrincipal FROM loans WHERE deletedAt IS NULL"),
+  ]);
+  const accounts = accountsRes.values ?? [];
 
   const bankAndCashBalances = accounts.filter((a) => a.type !== "credit_card").reduce((sum: number, a: { balance: number }) => sum + a.balance, 0);
   const creditCardDebt = accounts
     .filter((a) => a.type === "credit_card")
     .reduce((sum: number, a: { balance: number }) => sum + Math.max(0, -a.balance), 0);
+  const investmentsValue = (investmentsRes.values ?? []).reduce((sum: number, i: { units: number; currentPrice: number }) => sum + i.units * i.currentPrice, 0);
+  const loanDebt = (loansRes.values ?? []).reduce((sum: number, l: { remainingPrincipal: number }) => sum + l.remainingPrincipal, 0);
 
-  const totalAssets = round2(Math.max(0, bankAndCashBalances));
-  const totalLiabilities = round2(creditCardDebt + Math.max(0, -bankAndCashBalances));
+  const totalAssets = round2(Math.max(0, bankAndCashBalances) + investmentsValue);
+  const totalLiabilities = round2(creditCardDebt + loanDebt + Math.max(0, -bankAndCashBalances));
   const netWorth = round2(totalAssets - totalLiabilities);
 
   return {
@@ -31,9 +31,9 @@ export async function computeNetWorthLocal(): Promise<{ totalAssets: number; tot
     netWorth,
     breakdown: {
       bankAndCashBalances: round2(bankAndCashBalances),
-      investments: 0,
+      investments: round2(investmentsValue),
       creditCardDebt: round2(creditCardDebt),
-      loanDebt: 0,
+      loanDebt: round2(loanDebt),
     },
   };
 }

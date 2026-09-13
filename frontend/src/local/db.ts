@@ -124,6 +124,85 @@ CREATE TABLE IF NOT EXISTS bills (
   deletedAt TEXT
 );
 
+CREATE TABLE IF NOT EXISTS credit_cards (
+  id TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL UNIQUE,
+  statementDay INTEGER NOT NULL,
+  dueDate TEXT NOT NULL,
+  minimumDuePercent REAL NOT NULL DEFAULT 5,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  deletedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS loans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  principal REAL NOT NULL,
+  interestRate REAL NOT NULL,
+  tenureMonths INTEGER NOT NULL,
+  emi REAL NOT NULL,
+  startDate TEXT NOT NULL,
+  accountId TEXT,
+  remainingPrincipal REAL NOT NULL,
+  nextPaymentDate TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  deletedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS loan_payments (
+  id TEXT PRIMARY KEY,
+  loanId TEXT NOT NULL,
+  date TEXT NOT NULL,
+  amount REAL NOT NULL,
+  principalComponent REAL NOT NULL,
+  interestComponent REAL NOT NULL,
+  remainingPrincipalAfter REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_loan_payments_loanId ON loan_payments(loanId);
+
+CREATE TABLE IF NOT EXISTS investments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  units REAL NOT NULL DEFAULT 0,
+  avgBuyPrice REAL NOT NULL DEFAULT 0,
+  investedAmount REAL NOT NULL DEFAULT 0,
+  currentPrice REAL NOT NULL,
+  isManualPrice INTEGER NOT NULL DEFAULT 1,
+  priceUpdatedAt TEXT NOT NULL,
+  accountId TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  deletedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS investment_transactions (
+  id TEXT PRIMARY KEY,
+  investmentId TEXT NOT NULL,
+  date TEXT NOT NULL,
+  type TEXT NOT NULL,
+  units REAL NOT NULL,
+  pricePerUnit REAL NOT NULL,
+  amount REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_investment_transactions_investmentId ON investment_transactions(investmentId);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id TEXT PRIMARY KEY,
+  merchant TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  amount REAL NOT NULL,
+  frequency TEXT NOT NULL,
+  monthlyCost REAL NOT NULL,
+  yearlyCost REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'confirmed',
+  confirmedAt TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS net_worth_snapshots (
   date TEXT PRIMARY KEY,
   netWorth REAL NOT NULL,

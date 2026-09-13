@@ -77,6 +77,9 @@ export async function getDashboardLocal(): Promise<DashboardSummary> {
 
   const netWorth = await computeNetWorthLocal();
 
+  const subsRes = await db.query("SELECT monthlyCost FROM subscriptions WHERE status = 'confirmed'");
+  const monthlySubscriptionCost = round2((subsRes.values ?? []).reduce((s: number, sub: { monthlyCost: number }) => s + sub.monthlyCost, 0));
+
   return {
     netWorth: netWorth.netWorth,
     totalAssets: netWorth.totalAssets,
@@ -90,8 +93,7 @@ export async function getDashboardLocal(): Promise<DashboardSummary> {
     monthlyExpenses,
     monthlySavings,
     savingsRate,
-    // Subscriptions aren't localized yet (see readme.md) — real 0, not a fabricated figure.
-    monthlySubscriptionCost: 0,
+    monthlySubscriptionCost,
     totalBalance: round2(accounts.reduce((s: number, a: { balance: number }) => s + a.balance, 0)),
     accountCount: accounts.length,
     hasMockData: false,

@@ -1,4 +1,6 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import { listLoansLocal, createLoanLocal, deleteLoanLocal, payLoanLocal, getAmortizationScheduleLocal } from "../local/loans";
 
 export interface LoanPayment {
   date: string;
@@ -43,25 +45,30 @@ export interface AmortizationRow {
 }
 
 export async function listLoans(): Promise<Loan[]> {
+  if (isNative) return listLoansLocal();
   const data = await apiFetch("/loans");
   return data.loans;
 }
 
 export async function createLoan(input: CreateLoanInput): Promise<Loan> {
+  if (isNative) return createLoanLocal(input);
   const data = await apiFetch("/loans", { method: "POST", body: JSON.stringify(input) });
   return data.loan;
 }
 
 export async function deleteLoan(id: string): Promise<void> {
+  if (isNative) return deleteLoanLocal(id);
   await apiFetch(`/loans/${id}`, { method: "DELETE" });
 }
 
 export async function payLoan(id: string, amount?: number): Promise<Loan> {
+  if (isNative) return payLoanLocal(id, amount);
   const data = await apiFetch(`/loans/${id}/pay`, { method: "POST", body: JSON.stringify(amount ? { amount } : {}) });
   return data.loan;
 }
 
 export async function getAmortizationSchedule(id: string): Promise<AmortizationRow[]> {
+  if (isNative) return getAmortizationScheduleLocal(id);
   const data = await apiFetch(`/loans/${id}/amortization-schedule`);
   return data.schedule;
 }
