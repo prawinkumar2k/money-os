@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Account, listAccounts } from "../api/accounts";
 import { ImportPreview, confirmImport, downloadExport, previewImport } from "../api/importExport";
+import { isNative } from "../local/db";
 
 export function ImportExportPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -86,13 +87,13 @@ export function ImportExportPage() {
       {success && <p style={{ color: "var(--color-success)" }}>{success}</p>}
 
       <div className="card">
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Import transactions from CSV or PDF</h2>
+        <h2 style={{ marginTop: 0, fontSize: 16 }}>Import transactions from CSV{isNative ? "" : " or PDF"}</h2>
         <p className="text-muted" style={{ fontSize: 13 }}>
           CSV works with common column names (Date, Description/Narration, Amount or separate
-          Debit/Credit columns). PDF support is a generic line-based parser (date at the start of a
-          line, amount with a Dr/Cr marker at the end) — it is not bank-specific, won't handle every
-          statement layout, and never guesses: any line it can't confidently read is flagged for you
-          to review before anything is saved. Scanned/image-only PDFs aren't supported (no text to read).
+          Debit/Credit columns), fully offline — no backend connection needed.
+          {isNative
+            ? " PDF statement import isn't available in the app yet (the generic PDF parser needs a Node runtime this app doesn't have) — export your statement as CSV instead."
+            : " PDF support is a generic line-based parser (date at the start of a line, amount with a Dr/Cr marker at the end) — it is not bank-specific, won't handle every statement layout, and never guesses: any line it can't confidently read is flagged for you to review before anything is saved. Scanned/image-only PDFs aren't supported (no text to read)."}
         </p>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <select className="input" style={{ width: 200 }} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
@@ -100,7 +101,11 @@ export function ImportExportPage() {
               <option key={a._id} value={a._id}>{a.name}</option>
             ))}
           </select>
-          <input type="file" accept=".csv,text/csv,.pdf,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <input
+            type="file"
+            accept={isNative ? ".csv,text/csv" : ".csv,text/csv,.pdf,application/pdf"}
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
           <button className="btn" onClick={handlePreview} disabled={!file || loading}>
             {loading ? "Working..." : "Preview"}
           </button>
@@ -163,8 +168,8 @@ export function ImportExportPage() {
           <button className="btn" onClick={() => handleExport("csv")} disabled={exporting}>
             Download CSV
           </button>
-          <button className="btn btn-secondary" onClick={() => handleExport("xlsx")} disabled={exporting}>
-            Download Excel
+          <button className="btn btn-secondary" onClick={() => handleExport("xlsx")} disabled={exporting || isNative} title={isNative ? "Excel export isn't available offline yet — use CSV" : undefined}>
+            Download Excel{isNative ? " (needs backend)" : ""}
           </button>
         </div>
       </div>

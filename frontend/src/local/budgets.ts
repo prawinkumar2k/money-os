@@ -2,6 +2,10 @@ import { getDb, genId, nowIso } from "./db";
 import { computeAlertLevel, getCurrentPeriodRange, getPreviousPeriodRange, PeriodRange } from "./budgetCalc";
 import type { Budget, CreateBudgetInput } from "../api/budgets";
 
+export async function computeSpentForBudgetLocal(category: string | null, period: "weekly" | "monthly"): Promise<number> {
+  return computeSpentLocal(category, getCurrentPeriodRange(period));
+}
+
 async function computeSpentLocal(category: string | null, range: PeriodRange): Promise<number> {
   const db = await getDb();
   const where = ["deletedAt IS NULL", "type != 'transfer'", "date >= ?", "date <= ?"];

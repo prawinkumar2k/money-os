@@ -9,6 +9,7 @@ import {
   reconnectConnection,
   syncConnection,
 } from "../api/connections";
+import { isNative } from "../local/db";
 
 function statusBadge(status: Connection["status"]) {
   const map: Record<Connection["status"], { color: string; label: string }> = {
@@ -29,6 +30,13 @@ export function ConnectionsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (isNative) {
+      // Real bank/provider connections inherently require a reachable backend + provider API —
+      // unlike every other module, there is no local equivalent to fall back to, since the whole
+      // point is pulling data from an external source. Honest about that rather than pretending.
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [conns, avail] = await Promise.all([listConnections(), listAvailableProviders()]);
@@ -106,7 +114,14 @@ export function ConnectionsPage() {
 
       {error && <p style={{ color: "var(--color-danger)" }}>{error}</p>}
 
-      {loading ? (
+      {isNative ? (
+        <p className="text-muted" style={{ fontSize: 13 }}>
+          Bank/provider connections require a reachable server and a real Account Aggregator
+          integration — unlike every other Money OS feature, there is no offline equivalent,
+          since the entire point is pulling data from an external source. This screen has nothing
+          to show while offline; everything else in the app works normally.
+        </p>
+      ) : loading ? (
         <p className="text-muted">Loading...</p>
       ) : (
         <>

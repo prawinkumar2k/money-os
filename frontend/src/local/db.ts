@@ -203,6 +203,17 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updatedAt TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  relatedId TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_type_related ON notifications(type, relatedId);
+
 CREATE TABLE IF NOT EXISTS net_worth_snapshots (
   date TEXT PRIMARY KEY,
   netWorth REAL NOT NULL,

@@ -1,4 +1,6 @@
 import { apiFetch } from "./client";
+import { isNative } from "../local/db";
+import { listCategoriesLocal } from "../local/categories";
 
 export interface Category {
   _id: string;
@@ -8,6 +10,7 @@ export interface Category {
 }
 
 export async function listCategories(): Promise<Category[]> {
+  if (isNative) return listCategoriesLocal();
   const data = await apiFetch("/categories");
   return data.categories;
 }

@@ -1,5 +1,8 @@
 import { apiFetch, getAccessToken } from "./client";
 import { saveAndShareFile } from "../native/fileExport";
+import { isNative } from "../local/db";
+import { previewImportLocal, confirmImportLocal } from "../local/csvImport";
+import { exportTransactionsLocal } from "../local/exportTransactions";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -24,6 +27,8 @@ export interface ImportPreview {
 }
 
 export async function previewImport(accountId: string, file: File): Promise<ImportPreview> {
+  if (isNative) return previewImportLocal(accountId, file);
+
   const formData = new FormData();
   formData.append("accountId", accountId);
   formData.append("file", file);
@@ -45,6 +50,8 @@ export async function confirmImport(
   rows: ImportPreviewRow[],
   totals: { rowsTotal: number; rowsSkippedError: number; rowsSkippedDuplicate: number }
 ): Promise<void> {
+  if (isNative) return confirmImportLocal(accountId, rows);
+
   await apiFetch("/import/confirm", {
     method: "POST",
     body: JSON.stringify({
@@ -66,6 +73,14 @@ export async function confirmImport(
 // leak via browser history / server access logs), so the export is fetched with the header and
 // handed to the browser as a blob download instead.
 export async function downloadExport(format: "csv" | "xlsx"): Promise<void> {
+  const filename = `transactions-export.${format}`;
+
+  if (isNative) {
+    const blob = await exportTransactionsLocal(format);
+    if (await saveAndShareFile(blob, filename)) return;
+    throw new Error("Sharing the export file failed");
+  }
+
   const token = getAccessToken();
   const res = await fetch(`${API_URL}/export/transactions?format=${format}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -73,7 +88,6 @@ export async function downloadExport(format: "csv" | "xlsx"): Promise<void> {
   if (!res.ok) throw new Error("Export failed");
 
   const blob = await res.blob();
-  const filename = `transactions-export.${format}`;
 
   if (await saveAndShareFile(blob, filename)) return;
 
